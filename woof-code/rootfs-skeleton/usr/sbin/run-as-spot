@@ -17,6 +17,29 @@ case $0 in *run-as|*run-as-user)
 	shift
 esac
 
+PROG="$1"
+
+case $0 in
+run-as-spot|*/run-as-spot) ;;
+*) PROG="$0" ;;
+esac
+
+case "$PROG" in
+*/*) EXEC="$PROG" ;;
+*)
+	EXEC=`command -v "$PROG"`
+	[ -z "$EXEC" ] && EXEC="$PROG"
+	;;
+esac
+
+# if spot-sandbox is present, run the shell inside a sandbox
+SANDBOX=
+case "$EXEC" in
+*.AppImage|flatpak|*/flatpak|/var/lib/flatpak/*) ;;
+*/dbus-daemon) ;; # Landlock breaks xdg-desktop-portal, which fails to open /proc/%u/root
+*) SANDBOX=`command -v spot-sandbox` ;;
+esac
+
 CWD=$PWD
 CMD=''
 while [ "$1" ]; do
@@ -25,6 +48,11 @@ while [ "$1" ]; do
 done
 
 [ "$CMD" ] || exit
+
+#test for chromium-based browsers (if true, launch with dbus-launch rather than exec)
+CBB=$(echo "$CMD" | grep -Ei -- 'chrome|chromium|brave|iron|opera|slimjet|vivaldi|microsoft-edge')
+[ -n "${CBB}" ] && EXE=dbus-launch || EXE=exec
+export EXE
 
 USER_HOME=$(awk -F: '$1=="'"${XUSER}"'" {print $6}' /etc/passwd)
 if ! [ "${USER_HOME}" ] ; then
@@ -52,8 +80,9 @@ EOF
 	export XDG_CONFIG_HOME=${USER_HOME}/.config
 	export XDG_CACHE_HOME=${USER_HOME}/.cache
 	export XDG_DATA_HOME=${USER_HOME}/.local/share
+	export XDG_STATE_HOME=${USER_HOME}/.local/state
 
-	for i in ${XDG_CONFIG_HOME} ${XDG_CACHE_HOME} ${XDG_DATA_HOME}
+	for i in ${XDG_CONFIG_HOME} ${XDG_CACHE_HOME} ${XDG_DATA_HOME} ${XDG_STATE_HOME}
 	do
 		if ! [ -d $i ] ; then
 			mkdir -p $i
@@ -76,19 +105,24 @@ EOF
 
 	# close all file descriptors except std{in,out,err}, in case one of
 	# them points to a file under /root
-	for FD in /proc/self/fd/*; do
-		FD="${FD##*/}"
-		[ $FD -gt 2 ] && eval "exec ${FD}<&-"
-	done
+	if [ "$PROG" != "/usr/bin/Xwayland" ]; then
+		for FD in /proc/self/fd/*; do
+			FD="${FD##*/}"
+			[ $FD -gt 2 ] && eval "exec ${FD}<&-"
+		done
+	fi
 
 	exec su ${XUSER} -s /bin/ash -c '
-# try to switch to original directory, unless it is /root
-if [ "'"$CURDIR"'" = /root ]; then
+# try to switch to original directory, unless it is under /root
+case "'"$CURDIR"'" in
+/root|/root/*)
 	cd "'"$USER_HOME"'"
-else
+	;;
+*)
 	cd "'"$CURDIR"'"
-fi
-exec '"$CMD"'
+	;;
+esac
+$EXE '"${SANDBOX}"' '"$CMD"'
 '
 else
 	exec ash -c "exec $CMD"

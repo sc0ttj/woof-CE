@@ -17,6 +17,8 @@
 #180313 prevent error messages from appearing as Xdialog user input/selection.
 #180721 Replace modem-stats with corrected use of microcom.
 #200829 (v2.0) Test for nonexistant hardware with setserial, to avoid broken pipes; move etc gprs.conf; add conflict checks to mobile save and connect; replace deprecated ifconfig & iwconfig; add quotes to GPRSDEV in /root/.config/gprs.conf; replace pidof with pgrep or ps -C; add internationalization exports, for momanager; add nl80211 wpa driver; resolve shellcheck warnings; moved connect-related functions to connect-func.
+#220619 (v2.0.1) Detect hidden networks identified as binary zeroes (\x00...).
+#240411 (v2.0.3) Correct wireless check, because 'iw' may detect only devices with drivers that use nl80211, not those using wext. 
 
 export TEXTDOMAIN=frisbee #for momanager translation 200829...
 export OUTPUT_CHARSET=UTF-8
@@ -76,7 +78,7 @@ function add_profile {
 	    Xdialog  --wmclass frisbee --title "$(gettext 'Frisbee')"  --msgbox "$(eval_gettext "Network information for \$INTERFACE not available.  Please try again to connect.")" 0 0
 	    return 1 #140914
 	fi #140914 end
-	[ "$SSID" = "<hidden>" ] && SSID=''
+	[ "$SSID" = "<hidden>" ] || [ "${SSID:0:4}" = '\x00' ] && SSID='' #220619
 	FLAGS="$(echo "$BSSID_RESULT" | cut -f 4)" #140929
 
 	PRIORITY=$(max_priority) #140929
@@ -200,7 +202,7 @@ function add_profile {
 	
 	if [[ "$ENC" == "WPA" ]] ; then
 	    MGMT=WPA-PSK #130822...
-	    if [ $EAP -eq 1 ] ; then
+	    if [ "$EAP" -eq 1 ] ; then
 #           echo "add_profile - key_mgmt: $(wpa_cli -i "$INTERFACE" get_network "$ID" key_mgmt)" >> /tmp/debug.log #DEBUG
 #           echo "add_profile - eap: $(wpa_cli -i "$INTERFACE" get_network "$ID" eap)" >> /tmp/debug.log #DEBUG
 	        IDENTITY=""
@@ -340,7 +342,7 @@ function add_profile {
 	
 	
 	if [[ $PROTO != '' ]] ; then
-	    RESULT=$(wpa_cli -i "$INTERFACE" set_network "$ID" proto $PROTO)
+	    RESULT=$(wpa_cli -i "$INTERFACE" set_network "$ID" proto "$PROTO")
 	    if [[ "$RESULT" != "OK" ]] ; then
 	        PARAMETER="proto"
 	        Xdialog  --wmclass frisbee --title "$(gettext 'Frisbee')"  --msgbox "$(eval_gettext "Failed to set network configuration parameter: \$PARAMETER")" 0 0
@@ -434,7 +436,7 @@ function wpaconf_edit {
 	  || WPACFGFILE="/tmp/wpa_supplicant.conf"
 	TXTEDITOR=$(grep '^editor=' /etc/frisbee/frisbee.conf | sed 's/.*=\([^ 	#]*\).*/\1/') #140607
 	[ "$(which "$TXTEDITOR" 2>/dev/null)" ] || TXTEDITOR=defaulttexteditor #140607
-	$TXTEDITOR $WPACFGFILE #140607
+	"$TXTEDITOR" "$WPACFGFILE" #140607
 	RESULT=$(wpa_cli -i "$INTERFACE" reconfigure)
 	if [[ "$RESULT" != "OK" ]] ; then
 	    Xdialog  --wmclass frisbee --title "$(gettext 'Frisbee')"  --msgbox "$(gettext 'Failed to save configuration')" 0 0
@@ -729,7 +731,8 @@ function get_interfaces {
 # shellcheck disable=SC2034 # f1 is intentionally not used.
 	ip link show 2>&1 | grep '^[1-9]' | tr -d : | \
 	while read f1 if line ; do #200829
-	    if echo "$if" | grep -qvF "$wirelessifs" ; then #200829...
+	    if [ -z "$wirelessifs" ] \
+	      || grep -qvF "$wirelessifs" <<< "$if" ; then #200829... #240411
 	        line="$(gettext 'wired')"
 	    else
 	        line="$(gettext 'wireless')"
@@ -902,7 +905,7 @@ export -f   get_auth_alg
 function get_scan_results {
 	if_connected || return
 	wpa_cli -i "$INTERFACE" scan >/dev/null
-	wpa_cli scan_results -i "$INTERFACE" | grep ^..:..: | awk -F '\t' '{print $1"|"$2"|"$3"|"$5"|"$4}' | sort -g -r -t \| -k 3 #140607 160801 170621
+	wpa_cli scan_results -i "$INTERFACE" | grep ^..:..: | awk -F '\t' '{print $1"|"$2"|"$3"|"$5"|"$4}' | sort -g -r -t \| -k 3 | sed 's/\\x00//g' #140607 160801 170621 220619
 	
 	for i in 1 2 3 4 5 6 7 8 9 10 11 ; do 
 	    echo

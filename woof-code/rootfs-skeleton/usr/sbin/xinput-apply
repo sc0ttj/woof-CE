@@ -3,7 +3,7 @@
 [ -z "`pidof -s Xorg`" ] && exit 0
 grep -qm 1 "Using input driver 'libinput'" "/var/log/Xorg.${DISPLAY#:}.log" || exit 0
 
-. /root/.inputrc
+. /root/.libinputrc
 
 export DISPLAY=:0
 
@@ -58,3 +58,15 @@ xinput list --id-only | while read NAME; do
 	1) xinput set-prop "$NAME" "libinput Left Handed Enabled" 1 ;;
 	esac
 done
+
+[ -d /usr/lib64/xorg ] && LIB=lib64 || LIB=lib
+if [ ! -f /usr/$LIB/xorg/modules/input/synaptics_drv.so ]; then
+	TOUCHPAD="$(xinput list | grep -P '(?<= )[\/\w\s:]*(?i)(touchpad|trackpad|synaptics)(?-i).*?(?=\s*id)' -o | head -n1)"
+	if [ "$TOUCHPAD" ]; then
+		if [ "$LIBINPUT_DEFAULT_TOUCHPAD_ON" = "1" ]; then
+			xinput enable "$TOUCHPAD"
+		else
+			xinput disable "$TOUCHPAD"
+		fi
+	fi
+fi

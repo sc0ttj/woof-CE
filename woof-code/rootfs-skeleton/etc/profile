@@ -44,7 +44,7 @@ INPUTRC=/etc/inputrc
 export PS1 USER LOGNAME HISTSIZE INPUTRC EDITOR PAGER
 XFINANSDIR="/root/.xfinans"
 export XFINANSDIR
-export XLIB_SKIP_ARGB_VISUALS=1 #rox crashes with DRI modules. solution:
+#export XLIB_SKIP_ARGB_VISUALS=1 #rox crashes with DRI modules. solution:
 
 #this line gets edited by chooselocale script...
 LANG=en_US.UTF-8
@@ -77,6 +77,7 @@ export XDG_DATA_DIRS=/usr/share:/usr/local/share
 export XDG_CONFIG_DIRS=/etc/xdg #v2.14 changed from /usr/etc
 export XDG_CACHE_HOME=$HOME/.cache
 export XDG_RUNTIME_DIR=/tmp/runtime-${USER}
+export XDG_STATE_HOME=$HOME/.local/state
 [ ! -d $XDG_RUNTIME_DIR ] && mkdir -p $XDG_RUNTIME_DIR && chmod 0700 $XDG_RUNTIME_DIR
 
 export HISTFILESIZE=2000
@@ -94,6 +95,12 @@ for profile_script in /etc/profile.d/* ; do #w482 any files.
 	. $profile_script
 done
 unset profile_script
+
+# set environment variables defined in /etc/environment
+while read line ; do
+	case "$line" in \#*) continue ;; esac
+	export "$line"
+done < /etc/environment
 
 alias ls='ls --color=auto'
 export LS_COLORS='bd=33:cd=33'

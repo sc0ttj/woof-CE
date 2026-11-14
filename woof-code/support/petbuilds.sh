@@ -75,11 +75,25 @@ for NAME in $PETBUILDS; do
             rm -rf petbuild-rootfs-complete
             cp -a rootfs-complete petbuild-rootfs-complete
 
-            rm -f sh petbuild-rootfs-complete/bin/sh
+            [ "$USR_SYMLINKS" = "yes" ] && usrmerge petbuild-rootfs-complete 1
+
+            rm -f petbuild-rootfs-complete/bin/sh
             ln -s bash petbuild-rootfs-complete/bin/sh
+
+            # these can be skipped, rc.update generates this cache
+            for PROG in update-mime-database gtk-update-icon-cache glib-compile-schemas; do
+                rm -f petbuild-rootfs-complete/usr/bin/$PROG
+                cat << EOF > petbuild-rootfs-complete/usr/bin/$PROG
+#!/bin/sh
+echo "Skipping $PROG"
+EOF
+                chmod 755 petbuild-rootfs-complete/usr/bin/$PROG
+            done
 
             cp -f /etc/resolv.conf petbuild-rootfs-complete/etc/
             cp -f ../packages-templates/ca-certificates/pinstall.sh petbuild-rootfs-complete/
+            # required for void
+            chroot petbuild-rootfs-complete ldconfig
             chroot petbuild-rootfs-complete sh /pinstall.sh
             rm -f petbuild-rootfs-complete/pinstall.sh
 
@@ -116,10 +130,10 @@ for NAME in $PETBUILDS; do
                 ln -s bash petbuild-rootfs-complete/bin/sh
 
                 if [ ! -f ../petbuild-cache/busybox ]; then
-                    wget -t 1 -T 15 https://busybox.net/downloads/busybox-1.35.0.tar.bz2
-                    tar -xjf busybox-1.35.0.tar.bz2
-                    cp -f ../rootfs-petbuilds/busybox/DOTconfig busybox-1.35.0/.config
-                    cd busybox-1.35.0
+                    wget -t 1 -T 15 https://busybox.net/downloads/busybox-1.36.0.tar.bz2
+                    tar -xjf busybox-1.36.0.tar.bz2
+                    cp -f ../rootfs-petbuilds/busybox/DOTconfig busybox-1.36.0/.config
+                    cd busybox-1.36.0
                     make CONFIG_STATIC=y
                     install -D -m 755 busybox ../../petbuild-cache/busybox || exit 1
                     cd ..
@@ -142,6 +156,8 @@ for NAME in $PETBUILDS; do
             if [ ! -f petbuild-rootfs-complete/bin/busybox ]; then
                 if [ -f ../petbuild-output/busybox-latest/bin/busybox ]; then # busybox petbuild
                     install -D -m 755 ../petbuild-output/busybox-latest/bin/busybox petbuild-rootfs-complete/bin/busybox
+                elif [ -f ../petbuild-output/busybox-latest/usr/bin/busybox ]; then # busybox petbuild
+                    install -D -m 755 ../petbuild-output/busybox-latest/usr/bin/busybox petbuild-rootfs-complete/bin/busybox
                 elif [ -f ../packages-${DISTRO_FILE_PREFIX}/busybox/bin/busybox ]; then # prebuilt busybox
                     install -D -m 755 ../packages-${DISTRO_FILE_PREFIX}/busybox/bin/busybox petbuild-rootfs-complete/bin/busybox
                 elif [ "$NAME" != "busybox" ]; then
@@ -219,6 +235,7 @@ for NAME in $PETBUILDS; do
         rm -rf ../petbuild-output/${NAME}-${HASH}/root/.ccache
         rm -rf ../petbuild-output/${NAME}-${HASH}/var/cache
         rm -rf ../petbuild-output/${NAME}-${HASH}/tmp
+        rm -rf ../petbuild-output/${NAME}-${HASH}/run
         rm -rf ../petbuild-output/${NAME}-${HASH}/etc/ssl
         rm -f ../petbuild-output/${NAME}-${HASH}/etc/resolv.conf
         rm -f ../petbuild-output/${NAME}-${HASH}/etc/ld.so.cache
@@ -280,13 +297,6 @@ for NAME in $PETBUILDS; do
             strip --strip-all -R .note -R .comment ${ELF} 2>/dev/null
         done
 
-        for EXTRAFILE in ../rootfs-petbuilds/${NAME}/*; do
-            case "${EXTRAFILE##*/}" in
-            petbuild|*.patch|sha256.sum|*-*|DOTconfig|*.c|*.h) ;;
-            *) cp -a $EXTRAFILE ../petbuild-output/${NAME}-${HASH}/
-            esac
-        done
-
         find ../petbuild-output/${NAME}-${HASH} -name '.git*' -delete
     fi
 
@@ -313,16 +323,18 @@ for NAME in $PKGS; do
         mv ../packages-${DISTRO_FILE_PREFIX}/${NAME}/usr/share/locale ../packages-${DISTRO_FILE_PREFIX}/${NAME}_NLS/usr/share/
     fi
 
-    for DOCDIR in doc man info; do
+    for DOCDIR in doc man info help; do
         [ ! -d ../packages-${DISTRO_FILE_PREFIX}/${NAME}/usr/share/${DOCDIR} ] && continue
         mkdir -p ../packages-${DISTRO_FILE_PREFIX}/${NAME}_DOC/usr/share
         mv ../packages-${DISTRO_FILE_PREFIX}/${NAME}/usr/share/${DOCDIR} ../packages-${DISTRO_FILE_PREFIX}/${NAME}_DOC/usr/share/
     done
 
-    if [ "$INCLUDE_MAN_PAGES" = "yes" -a -d ../packages-${DISTRO_FILE_PREFIX}/${NAME}_DOC/usr/share/man ]; then
-        mkdir ../packages-${DISTRO_FILE_PREFIX}/${NAME}/usr/share/man
-        mv -v ../packages-${DISTRO_FILE_PREFIX}/${NAME}_DOC/usr/share/man/man[1-9]* ../packages-${DISTRO_FILE_PREFIX}/${NAME}/usr/share/man/
-    fi
+    for EXTRAFILE in ../rootfs-petbuilds/${NAME}/*; do
+        case "${EXTRAFILE##*/}" in
+        petbuild|*.patch|sha256.sum|*-*|DOTconfig|*.c|*.h) ;;
+        *) cp -a $EXTRAFILE ../packages-${DISTRO_FILE_PREFIX}/${NAME}/
+        esac
+    done
 
     for SUFFIX in _DOC _NLS; do
         [ ! -d ../packages-${DISTRO_FILE_PREFIX}/${NAME}${SUFFIX} ] && continue

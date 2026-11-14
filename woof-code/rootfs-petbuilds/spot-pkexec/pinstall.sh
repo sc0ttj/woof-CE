@@ -1,4 +1,8 @@
-#!/bin/sh
-
-chown root:root usr/bin/pkexec
-chmod 4755 usr/bin/pkexec
+echo "Moving Downloads to /home/spot"
+if [ -e home/spot/Downloads ]; then
+	rm -rf root/Downloads
+else
+	mv root/Downloads home/spot/
+fi
+chroot . chown -R spot:spot /home/spot/Downloads
+ln -s ../home/spot/Downloads root/

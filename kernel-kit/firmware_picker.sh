@@ -108,7 +108,13 @@ do
 							cp -L -n $SRC_FW_DIR/${fw%\-*}-${c}.${fw#*\.} $FIRMWARE_RESULT_DIR
 							fw_msg ${fw%\-*}-${c}.${fw#*\.} $fw_tmp_list # log to zdrv
 							break
-						else
+						#### THIS HAS BEEN ADDED TO FIX IWLWIFI FIRMWARE DIRECTORY CHANGE 250906
+						elif [ -e "$SRC_FW_DIR/intel/iwlwifi/${fw%\-*}-${c}.${fw#*\.}" ];then
+							cp -L -n $SRC_FW_DIR/intel/iwlwifi/${fw%\-*}-${c}.${fw#*\.} $FIRMWARE_RESULT_DIR
+							fw_msg ${fw%\-*}-${c}.${fw#*\.} $fw_tmp_list # log to zdrv
+							break
+						#### END OF ADDITION
+	 					else
 							fw_msg "${fw} missing" $fw_tmp_list # log to zdrv
 							c=$(($c - 1))
 						fi
@@ -158,18 +164,59 @@ do
 	for F in $SRC_FW_DIR/$fw_top_dir/*/hw*;do
 		fw_subdir=${F#$SRC_FW_DIR/}
 		[ -e $FIRMWARE_RESULT_DIR/$fw_subdir ] && continue
-		fgrep -qlm1 ${fw_subdir#$fw_top_dir/} /tmp/modstrings || continue
+		grep -Fqlm1 ${fw_subdir#$fw_top_dir/} /tmp/modstrings || continue
 		mkdir -p $FIRMWARE_RESULT_DIR/${fw_subdir%/*}
 		cp -r -L -n $F $FIRMWARE_RESULT_DIR/${fw_subdir%/*}
 		fw_msg $fw_subdir $fw_tmp_list # log to zdrv
 	done
 	rm -f /tmp/modstrings
 	;;
+	*/ralink/rt*/rt*.ko) # rt2800pci doesn't list rt3290.bin
+	strings -a $m > /tmp/modstrings
+	for F in $SRC_FW_DIR/rt*.bin;do
+		grep -Fqlm1 ${F##*/} /tmp/modstrings || continue
+		cp -L -n $F $FIRMWARE_RESULT_DIR
+		fw_msg ${F##*/} $fw_tmp_list # log to zdrv
+	done
+	rm -f /tmp/modstrings
+	;;
+	*/amdgpu.ko|*/radeon.ko) # some paths are formatted at runtime and don't appear in modinfo, i.e. radeon/%s_mec2.bin
+	for F in $SRC_FW_DIR/`basename "$m" .ko`/*_*.bin;do
+		fw_subdir=${F#$SRC_FW_DIR/}
+		fw_subdir=${fw_subdir%/*}
+		fw_basename=${F##*/}
+		[ -e ${FIRMWARE_RESULT_DIR}/${fw_subdir}/${fw_basename} ] && continue
+		[ -z "`ls ${FIRMWARE_RESULT_DIR}/${fw_subdir}/${fw_basename%%_*}_*.bin 2>/dev/null`" ] && continue
+		cp -L -n $F ${FIRMWARE_RESULT_DIR}/${fw_subdir}
+		fw_msg ${fw_subdir}/${fw_basename} $fw_tmp_list # log to zdrv
+	done
+	;;
+	*/btusb.ko)
+	mkdir -p ${FIRMWARE_RESULT_DIR}/qca
+	for F in $SRC_FW_DIR/qca/rampatch_usb_[0-9]*.bin $SRC_FW_DIR/qca/nvm_usb_[0-9]*.bin;do
+		[ -e ${FIRMWARE_RESULT_DIR}/qca/${F##*/} ] && continue
+		cp -L -n $F ${FIRMWARE_RESULT_DIR}/qca/
+		fw_msg ${F#$SRC_FW_DIR/} $fw_tmp_list # log to zdrv
+	done
+	;;
+	*/btqca.ko)
+	mkdir -p ${FIRMWARE_RESULT_DIR}/qca
+	for F in $SRC_FW_DIR/qca/rampatch_[0-9]*.bin $SRC_FW_DIR/qca/nvm_[0-9]*.bin $SRC_FW_DIR/qca/*v[0-9]*.bin;do
+		[ -e ${FIRMWARE_RESULT_DIR}/qca/${F##*/} ] && continue
+		cp -L -n $F ${FIRMWARE_RESULT_DIR}/qca/
+		fw_msg ${F#$SRC_FW_DIR/} $fw_tmp_list # log to zdrv
+	done
+	;;
 	esac
 done
 # extra firmware from other sources
 if [ -n "`find $module_dir -name 'snd-sof*.ko' | head -n 1`" ];then
-	./get_sof.sh `pwd`/zfirmware_workdir "`pwd`/$module_dir" || exit 1
+	if command -v jq > /dev/null;then
+		./get_sof.sh `pwd`/zfirmware_workdir || exit 1
+	else
+		log_msg "jq is missing, skipping get_sof.sh"
+		[ -n "$GITHUB_ACTIONS" ] && exit 1
+	fi
 fi
 if [ "$EXTRA_FW" = 'yes' ];then
 	./firmware_extra.sh

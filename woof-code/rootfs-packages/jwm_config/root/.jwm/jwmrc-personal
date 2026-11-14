@@ -33,13 +33,8 @@
 <!-- <Option>tiled</Option> -->
 <!-- auto-maximization when moving window to top/side of desktop -->
 <!-- <Option>aerosnap</Option> -->
-</Group>
-
-<!-- Start Firefox maximized, to save vertical space -->
-<Group>
-    <Name>Navigator</Name>
-    <Name>Firefox</Name>
-    <Option>maximized</Option>
+<Class>Savebox</Class>
+<Option>width:500</Option>
 </Group>
 
 <!-- Key bindings -->
@@ -77,9 +72,9 @@
 <Key mask="CS" key="Escape">exec:defaultprocessmanager</Key>
 
 <!-- http://wiki.linuxquestions.org/wiki/XF86_keyboard_symbols -->
-<Key key="XF86AudioMute">exec:pactl set-sink-mute @DEFAULT_SINK@ toggle || amixer sset Master toggle</Key>
-<Key key="XF86AudioRaiseVolume">exec:pactl set-sink-volume @DEFAULT_SINK@ +1% || amixer sset Master 1+,1+</Key>
-<Key key="XF86AudioLowerVolume">exec:pactl set-sink-volume @DEFAULT_SINK@ -1% || amixer sset Master 1-,1-</Key>
+<Key key="XF86AudioMute">exec:wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle || pactl set-sink-mute @DEFAULT_SINK@ toggle || amixer sset Master toggle</Key>
+<Key key="XF86AudioRaiseVolume">exec:wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%+ || pactl set-sink-volume @DEFAULT_SINK@ +1% || amixer sset Master 1+,1+</Key>
+<Key key="XF86AudioLowerVolume">exec:wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%- || pactl set-sink-volume @DEFAULT_SINK@ -1% || amixer sset Master 1-,1-</Key>
 <Key key="XF86WWW">exec:defaultbrowser</Key>
 <Key key="XF86HomePage">exec:defaultbrowser</Key>
 <Key key="XF86MonBrightnessUp">exec:brightnessctl set +10%</Key>
@@ -102,8 +97,4 @@
 
 <DefaultIcon>/usr/share/pixmaps/puppy/execute.svg</DefaultIcon>
 
-<ButtonClose>/root/.jwm/window_buttons/close.png</ButtonClose>
-<ButtonMax>/root/.jwm/window_buttons/max.png</ButtonMax>
-<ButtonMaxActive>/root/.jwm/window_buttons/maxact.png</ButtonMaxActive>
-<ButtonMin>/root/.jwm/window_buttons/min.png</ButtonMin>
 </JWM>

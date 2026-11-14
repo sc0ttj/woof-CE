@@ -10,6 +10,12 @@ export OUTPUT_CHARSET=UTF-8   # even if not gettext.
 
 [ ! -f /tmp/yaf-splash ] && ln -s "`which gtkdialog`" /tmp/yaf-splash
 
+# when invoked from the tty (for example, by pm13), XDG_SESSION_TYPE is unset
+if [ -z "$XDG_SESSION_TYPE" ]; then
+	XDG_SESSION_TYPE='x11'
+	[ -e /tmp/runtime-root/wayland-0 ] && XDG_SESSION_TYPE='wayland'
+fi
+
 if [ "$XDG_SESSION_TYPE" != 'wayland' ]; then
 	geometry=$(xwininfo -root | grep ' \-geometry ')
 	geometry=${geometry%%\+*}
@@ -212,6 +218,12 @@ case $placement in
 	bottom-right) X=$(($ROOTX-$WIDTH-$MARGIN_DESKTOP)); Y=$(($ROOTY-$HEIGHT-$MARGIN_DESKTOP)); WINTYPE=10;POSATTR='edge="bottomright"';;
 	bottom-left) X=$MARGIN_DESKTOP; Y=$(($ROOTY-$HEIGHT-$MARGIN_DESKTOP)); WINTYPE=10;POSATTR='edge="bottomleft"';;
 esac
+
+#override splash foreground if gtktheme=Numix
+if [ "`grep 'gtk-theme-name' $HOME/.config/gtk-3.0/settings.ini 2>/dev/null`" ] ; then
+   THEME=$(grep 'gtk-theme-name' $HOME/.config/gtk-3.0/settings.ini | cut -d '=' -f2 | awk '{$1=$1};1')
+   [ "$THEME" = "Numix" -o "$THEME" = "Numix_dark" ] && bg=grey30
+fi
 
 #set backgound
 if [ $bg_gradient = true ]; then

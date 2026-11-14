@@ -1,15 +1,16 @@
 download() {
-    [ -f mtpaint-3.50.09.zip ] || wget -t 3 -T 60 -O mtpaint-3.50.09.zip https://github.com/wjaguar/mtPaint/archive/199472ad6a4ecee6c8583fb5a504a2e99712b4fc.zip
+    [ -f mtpaint-3.50.13.zip ] || wget -t 3 -T 60 -O mtpaint-3.50.13.zip https://github.com/wjaguar/mtPaint/archive/a50460bacadfc522705648c1367541974c5d109d.zip
 }
 
 build() {
-    unzip -q mtpaint-3.50.09.zip
-    cd mtPaint-199472ad6a4ecee6c8583fb5a504a2e99712b4fc
+    unzip -q mtpaint-3.50.13.zip
+    cd mtPaint-a50460bacadfc522705648c1367541974c5d109d
     patch -p1 < ../wayland.patch
+#    patch -p1 < ../gcc14.patch
     if [ $PETBUILD_GTK -eq 3 ]; then
-        ./configure gtk3 gtkfilesel gtkcolsel cflags nojp2 notiff nowebp nolcms intl --prefix=/usr
+        ./configure gtk3 gtkfilesel gtkcolsel cflags nojp2 notiff nolcms intl --prefix=/usr
     else
-        ./configure gtk2 gtkfilesel gtkcolsel cflags nojp2 notiff nowebp nolcms intl --prefix=/usr
+        ./configure gtk2 gtkfilesel gtkcolsel cflags nojp2 notiff nolcms intl --prefix=/usr
     fi
     make
     make install

@@ -12,8 +12,6 @@
 #As a last resort, if target pkg is wrong, a file 'FIXUPHACK' is a script that can be at top dir
 #  in template. It executes in target, with current-dir set to where FIXUPHACK is located. (ex: perl_tiny).
 
-[ -n "$GITPOD_WORKSPACE_ID" -a "`id -u`" -ne 0 ] && exec fakeroot $0 "$@"
-
 #set -x
 MWD=$(pwd)
 export LANG=C #faster.
@@ -120,10 +118,10 @@ pre_process_pkg() {
 	# which contains code to fix/trim dowm stuff to speed up processing...
 	if [ -f ${MWD}/packages-templates/${GENERICNAME}/_PRE ] ; then
 		echo " executing packages-templates/${GENERICNAME}/_PRE"
-		( cd ${PKG_DIR} ; sh ${MWD}/packages-templates/${GENERICNAME}/_PRE )
+		( cd ${PKG_DIR} ; bash ${MWD}/packages-templates/${GENERICNAME}/_PRE )
 	elif [ -f packages-templates/${GENERICNAME}_PRE ] ; then
 		echo " executing packages-templates/${GENERICNAME}_PRE"
-		( cd ${PKG_DIR} ; sh ${MWD}/packages-templates/${GENERICNAME}_PRE )
+		( cd ${PKG_DIR} ; bash ${MWD}/packages-templates/${GENERICNAME}_PRE )
 	fi
 }
 
@@ -317,7 +315,7 @@ do
 			fi
 		fi
 		;;
-	*.tar.*) #gentoo and others 120515
+	*.tar.*|*.xbps) #gentoo and others 120515
 		mkdir -p ${TARGET_DIR}/
 		PKGNAME="${PKGNAME%.tar.bz2}" #ex: bash-3.2
 		tar --directory=${TARGET_DIR}/ -xf ${ONEBINARYPKG}
@@ -395,15 +393,6 @@ do
 				mkdir -p ${DOC_DIR}/${ONEDIR}
 				cp -a --remove-destination ${ONEDIR}/* ${DOC_DIR}/${ONEDIR}/
 				rm -rf ${ONEDIR}
-			fi
-			if [ "$INCLUDE_MAN_PAGES" = "yes" -a -z "$EXE" ]; then
-				case "$ONEDIR" in
-				*"/man")
-					mkdir -p ${ONEDIR}
-					cp -av --remove-destination ${DOC_DIR}/${ONEDIR}/man[1-9]* ${ONEDIR}
-					rm -rf ${DOC_DIR}/${ONEDIR}/man[1-9]*
-					;;
-				esac
 			fi
 			continue
 			;;
@@ -499,9 +488,9 @@ do
  if [ -f "$FIXUPHACK_FILE" ];then
 	echo " executing ${FIXUPHACK_FILE}"
 	if [ -d $PKG_DIR ] ; then
-		( cd $PKG_DIR ; sh ${MWD}/${FIXUPHACK_FILE} )
+		( cd $PKG_DIR ; bash ${MWD}/${FIXUPHACK_FILE} )
 	elif [ -d $DEV_DIR ] ; then #python-dev
-		( cd $DEV_DIR ; sh ${MWD}/${FIXUPHACK_FILE} )
+		( cd $DEV_DIR ; bash ${MWD}/${FIXUPHACK_FILE} )
 	fi
  fi
 

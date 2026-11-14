@@ -2,6 +2,9 @@
 #(c) Copyright Barry Kauler 2009, puppylinux.com
 #2009 Lesser GPL licence v2 (/usr/share/doc/legal/lgpl-2.1.txt).
 #The Puppy Package Manager main GUI window.
+#230305 v2.5 jrb and Marv: adapt installation for "usrmerge" (debian style) distros, using a temporary installation directory.
+#240526 v2.5 Use gtk+ 2 version of gtkdialog, if installed.
+#240528 v2.5 Invoke PPM advice dialog, when available.
 
 . /etc/rc.d/functions_x
 
@@ -9,6 +12,11 @@ VERSION="2.5"
 
 export TEXTDOMAIN=petget___pkg_chooser.sh
 export OUTPUT_CHARSET=UTF-8
+
+#Issue PPM advice pop-up if installed. #240528...
+if [ -x /usr/local/petget/ppm_advice.sh ]; then
+  /usr/local/petget/ppm_advice.sh
+fi
 
 # Do not allow another instance
 wait
@@ -249,7 +257,7 @@ DEF_CHK_NLS='false'
 
 #130511 need to include devx-only-installed-packages, if loaded...
 #note, this code block also in check_deps.sh.
-if which gcc;then
+if which gcc >/dev/null;then
  cp -f /root/.packages/woof-installed-packages /tmp/petget_proc/ppm-layers-installed-packages
  cat /root/.packages/devx-only-installed-packages >> /tmp/petget_proc/ppm-layers-installed-packages
  sort -u /tmp/petget_proc/ppm-layers-installed-packages > /root/.packages/layers-installed-packages
@@ -264,11 +272,11 @@ if [ ! -f /tmp/petget_proc/petget_installed_patterns_system ];then
  echo "$INSTALLED_PATTERNS_SYS" > /tmp/petget_proc/petget_installed_patterns_system
  #PKGS_SPECS_TABLE also has system-installed names, some of them are generic combinations of pkgs...
  . /etc/rc.d/BOOTCONFIG
- if [ "$(echo $EXTRASFSLIST | grep devx_${DISTRO_FILE_PREFIX}_${DISTRO_VERSION} )" = "" -a \
-   "$(echo $LASTUNIONRECORD | grep devx_${DISTRO_FILE_PREFIX}_${DISTRO_VERSION} )" = "" ]; then
-  INSTALLED_PATTERNS_GEN="`echo "$PKGS_SPECS_TABLE" | grep '^yes' | grep -v 'exe>dev' | cut -f 2 -d '|' |  sed -e 's%^%|%' -e 's%$%|%' -e 's%\\-%\\\\-%g'`"
+ if [ "$(echo $EXTRASFSLIST | grep devx_${DISTRO_FILE_PREFIX}_${DISTRO_VERSION} )" = "" ] \
+   && [ "$(echo $LASTUNIONRECORD | grep devx_${DISTRO_FILE_PREFIX}_${DISTRO_VERSION} )" = "" ]; then
+  INSTALLED_PATTERNS_GEN="`grep '^yes' <<< "$PKGS_SPECS_TABLE" | grep -v 'exe>dev' | cut -f 2 -d '|' |  sed -e 's%^%|%' -e 's%$%|%' -e 's%\\-%\\\\-%g'`"
  else
-  INSTALLED_PATTERNS_GEN="`echo "$PKGS_SPECS_TABLE" | grep '^yes' | cut -f 2 -d '|' |  sed -e 's%^%|%' -e 's%$%|%' -e 's%\\-%\\\\-%g'`"
+  INSTALLED_PATTERNS_GEN="`grep '^yes' <<< "$PKGS_SPECS_TABLE" | cut -f 2 -d '|' |  sed -e 's%^%|%' -e 's%$%|%' -e 's%\\-%\\\\-%g'`"
  fi
  echo "$INSTALLED_PATTERNS_GEN" >> /tmp/petget_proc/petget_installed_patterns_system
  
@@ -360,8 +368,8 @@ echo -n "" > /tmp/petget_proc/petget_active_repo_list
 REPOS_RADIO=""
 repocnt=0
 #sort with -puppy-* repos last...
-aPRE="`echo -n "$PKG_REPOS_ENABLED" | tr ' ' '\n' | grep -v '\-puppy\-' | tr -s '\n' | tr '\n' ' '`"
-bPRE="`echo -n "$PKG_REPOS_ENABLED" | tr ' ' '\n' | grep '\-puppy\-' | tr -s '\n' | tr '\n' ' '`"
+aPRE="`echo -n "$PKG_REPOS_ENABLED" | tr ' ' '\n' | grep -v '\-puppy-' | tr -s '\n' | tr '\n' ' '`"
+bPRE="`echo -n "$PKG_REPOS_ENABLED" | tr ' ' '\n' | grep '\-puppy-' | tr -s '\n' | tr '\n' ' '`"
 for ONEREPO in $aPRE $bPRE #ex: ' Packages-puppy-precise-official Packages-puppy-noarch-official Packages-ubuntu-precise-main Packages-ubuntu-precise-multiverse '
 do
  [ ! -f /root/.packages/$ONEREPO ] && continue
@@ -374,9 +382,19 @@ do
  #[ $repocnt -ge 5 ] && break	# SFR: no limit
 done
 
-FILTER_CATEG="Desktop"
+REPOS_NOARCH_WARNING=""
+if which apt >/dev/null || which synaptic >/dev/null; then
+  REPOS_NOARCH_WARNING="<text><label>\" \"</label></text>
+<text><label>\"Warning !\"</label></text>
+<text><label>\"Some noarch packages\"</label></text>
+<text><label>\"are old or unsupported.\"</label></text>"
+  FILTER_CATEG="ALL" #230305...
+else
+  FILTER_CATEG="Desktop"
+fi
+
 #note, cannot initialise radio buttons in gtkdialog...
-echo "Desktop" > /tmp/petget_proc/petget_filtercategory #must start with Desktop.
+echo "$FILTER_CATEG" > /tmp/petget_proc/petget_filtercategory #must start with Desktop. #230305
 echo "$FIRST_DB" > /tmp/petget_proc/petget/current-repo-triad #ex: slackware-12.2-official
 
 #130330 GUI filtering. see also filterpkgs.sh ...
@@ -404,13 +422,17 @@ cp  /usr/share/pixmaps/puppy/close.svg "$ICONDIR"/true.svg
 ln -sf "$ICONDIR"/true.svg "$ICONDIR"/tgb0.svg
 
 # check screen size
-while read a b c ; do
-	case $a in -geometry)
-		SCRNXY=${b%%+*} #1366x768
-		read SCRN_X SCRN_Y <<< "${SCRNXY//x/ }"
-		break
-	esac
-done <<< "$(LANG=C xwininfo -root)"
+if [ "$XDG_SESSION_TYPE" = 'wayland' ]; then
+	read SCRNXY ETC < <(wlr-randr | grep -m1 current)
+else
+	while read a b c ; do
+		case $a in -geometry)
+			SCRNXY=${b%%+*} #1366x768
+			break
+		esac
+	done <<< "$(LANG=C xwininfo -root)"
+fi
+read SCRN_X SCRN_Y <<< "${SCRNXY//x/ }"
 
 UO_1="1000"
 UO_2="650"
@@ -423,9 +445,9 @@ UO_6="</vbox>"
 WIDTH="$UO_1"
 [ "$SCRN_X" -le 1000 ] && WIDTH="$((SCRN_X-5))"
 
-[ -z "$PPM_CATEGORIES" ] && PPM_CATEGORIES="ALL Desktop System Setup Utility Filesystem Graphic Document Business Personal Network Internet Multimedia Fun"
+[ -z "$PPM_CATEGORIES" ] && PPM_CATEGORIES="$FILTER_CATEG $(sed "s/$FILTER_CATEG *//" <<< "Desktop System Setup Utility Filesystem Graphic Document Business Personal Network Internet Multimedia Fun ALL")" #230305
 PPM_CATEGORIES_PRINT="$(echo "$PPM_CATEGORIES" | tr "[:space:]" "\n" |  sed -n -E '/^[[:space:]]*$/! {s%(.*)%<item>\1</item>%;p}')"
-S='<window title="'$(gettext 'Package Manager v')''${VERSION}'" width-request="'${WIDTH}'" icon-name="gtk-about" default_height="440">
+S='<window title="'$(gettext 'Package Manager v')''${VERSION}'" width-request="'${WIDTH}'" icon-name="gtk-about" default_height="540">
 <vbox space-expand="true" space-fill="true">
   <vbox space-expand="true" space-fill="true">
     <vbox space-expand="false" space-fill="false">
@@ -439,12 +461,13 @@ S='<window title="'$(gettext 'Package Manager v')''${VERSION}'" width-request="'
           <action>defaulthtmlviewer file://'${HELPFILE}' & </action>
         </button>
 	
-	<button tooltip-text="'$(gettext 'Update package database')'" space-expand="false" space-fill="false">
+        <button tooltip-text="'$(gettext 'Update package database')'" space-expand="false" space-fill="false">
           '"`/usr/lib/gtkdialog/xml_button-icon refresh`"'
           <action>'${RXVT}' /usr/local/petget/0setup</action>
+          <action>sleep 1</action>
           <action>restart_ppm</action>
         </button>
-	
+
         <button tooltip-text="'$(gettext 'Configure package manager')'" space-expand="false" space-fill="false">
           '"`/usr/lib/gtkdialog/xml_button-icon preferences`"'
           <action>/usr/local/petget/configure.sh</action>
@@ -532,6 +555,7 @@ S='<window title="'$(gettext 'Package Manager v')''${VERSION}'" width-request="'
                       <action>disable:VBOX_MAIN</action>
                       <action>echo "$TREE2" > /tmp/petget_proc/pkgs_to_remove; /usr/local/petget/removemodes.sh "$REMOVE_MODE"</action>
                       <action>enable:VBOX_MAIN</action>
+                      <action>refresh:TREE2</action>
                     </button>
                   </vbox>
                 </notebook>
@@ -559,6 +583,7 @@ S='<window title="'$(gettext 'Package Manager v')''${VERSION}'" width-request="'
           <frame '$(gettext 'Repositories')'>
             <vbox scrollable="true" shadow-type="0" hscrollbar-policy="2" space-expand="true" space-fill="true">
               '${REPOS_RADIO}'
+              '${REPOS_NOARCH_WARNING}'
               <text height-request="1" space-expand="true" space-fill="true"><label>""</label></text>
               <height>128</height>
               <width>50</width>
@@ -688,7 +713,10 @@ class "GtkText*" style "specialmono"' > /tmp/petget_proc/petget/gtkrc_ppm
 export GTK2_RC_FILES=/root/.gtkrc-2.0:/tmp/petget_proc/petget/gtkrc_ppm
 . /usr/lib/gtkdialog/xml_info gtk #build bg_pixmap for gtk-theme
 
-gtkdialog -p PPM_GUI --styles=/tmp/gtkrc_xml_info.css
+GTKDIALOG='gtkdialog' #240526...
+which gtk2dialog >/dev/null \
+  && GTKDIALOG='gtk2dialog' && GTKDIALOG_BUILD=GTK2 #force gtk2 theming
+"$GTKDIALOG" -p PPM_GUI --styles=/tmp/gtkrc_xml_info.css >/dev/null
 
 #and clean up
 clean_flags

@@ -149,7 +149,7 @@ while read repo
 do
 	echo "\$repo" | grep -m1 "^${DISTRO_DB_SUBNAME/\./\\\.}" | grep -q 'pet' && echo "\$repo" > /tmp/sources.new
 	echo "\$repo" | cut -d "|" -f1 | grep -q "patches" && continue
-	echo "\$repo" | grep -qE "^${DISTRO_BINARY_COMPAT}${DISTRO_COMPAT_VERSION}|^${DISTRO_BINARY_COMPAT}\-${DISTRO_COMPAT_VERSION}|^${DISTRO_COMPAT_VERSION}\-" && echo "\$repo" >> /tmp/sources.new
+	echo "\$repo" | grep -qE "^${DISTRO_BINARY_COMPAT}${DISTRO_COMPAT_VERSION}|^${DISTRO_BINARY_COMPAT}-${DISTRO_COMPAT_VERSION}|^${DISTRO_COMPAT_VERSION}-" && echo "\$repo" >> /tmp/sources.new
 done < 	root/.pkg/sources-all
 			
 while read ent
@@ -292,6 +292,7 @@ mergedir() {
 
 	echo "Merging ${1} with ${2}"
 
+	local NAME
 	for NAME in `ls ${1} 2>/dev/null`; do
 		if [ -d ${1}/${NAME} ]; then
 			mergedir ${1}/${NAME} ${2}/${NAME}

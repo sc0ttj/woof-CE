@@ -124,7 +124,7 @@ Boot parameters:
 
 pmedia=<atahd|ataflash|usbhd|usbflash|cd> 
    Indicates the type of boot device.
-   If it's "cd" then the partitions are searched for a save layer file, the only situation that triggers such a search.
+   If it's "cd" then all partitions are searched for Puppy files and a save layer file.
    If the first 3 characters are "usb", then any searching is restricted to only usb devices.
    If the last 5 characters are "flash" the top layer in the stack remains the tmpfs in memory, otherwise any found save layer becomes the top layer in the stack.
    This boot parameter should always be provided.
@@ -137,7 +137,8 @@ psubdir=</path/to/install/directory>
    This is the default path for locating any puppy file and any partition.
 
 punionfs=<aufs|overlay>
-   Overrides the union file system choice made at build time.
+   Overrides the union file system choice.
+   The default is aufs, if the kernel is built with aufs support.
    Use with care, as aufs and overlay are incompatible with each other.
    To switch from aufs to overlay or vice versa, start with a fresh save layer (pfix=ram).
 
@@ -225,13 +226,12 @@ pimod=<, separated list of kernel module names>
    But sometimes init needs to request input from the user via the keyboard.
    Specifying kernel modules in this parameter will cause init to load them before any possible keyboard interaction.
 
-pfix=<ram, nox, trim, nocopy, fsck, fsckp, rdsh, <number>>
+pfix=<ram, nox, nocopy, fsck, fsckp, rdsh, <number>>
    The pfix parameter is a ',' separated list of 1 or more of the above sub-parameters.
    ram:      run in ram only (do not load ${DISTRO_FILE_PREFIX}save).
    nox:      do not start X.
-   trim:     add "discard" to mount options if SSD.
    copy:     copy .sfs files into ram
-   nocopy:   do not copy .sfs files into ram (default is copy if ram <= 1024 MB).
+   nocopy:   do not copy .sfs files into ram (default is copy if ram > 1024 MB, while free ramdisk space is >= 64 MB).
    fsck:     do fsck of ${DISTRO_FILE_PREFIX}save.?fs file.
    fsckp:    do fsck before first mount of supported partitions.
    rdsh:     exit to shell in initial ramdisk.

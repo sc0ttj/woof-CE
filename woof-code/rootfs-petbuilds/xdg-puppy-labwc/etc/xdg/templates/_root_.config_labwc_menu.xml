@@ -16,8 +16,7 @@
   <menu id="xdg-menu-Desktop" />
   <menu id="xdg-menu-System" />
   <menu id="xdg-menu-Setup" />
-  <item label="____________">
-  </item>
+  <separator />
   <menu id="xdg-menu-Utility" />
   <menu id="xdg-menu-Filesystem" />
   <menu id="xdg-menu-Graphic" />
@@ -28,12 +27,11 @@
   <menu id="xdg-menu-Internet" />
   <menu id="xdg-menu-Multimedia" />
   <menu id="xdg-menu-Fun" />
-  <item label="____________">
-  </item>
-  <item label="Help">
+  <separator />
+  <item label="Help" icon="/usr/local/lib/X11/pixmaps/help48.png">
     <action name="Execute"><command>puppyhelp</command></action>
   </item>
-  <item label="Leave">
+  <item label="Leave" icon="/usr/local/lib/X11/pixmaps/shutdown48.png">
     <action name="Execute"><command>logout_gui</command></action>
   </item>
 </menu>

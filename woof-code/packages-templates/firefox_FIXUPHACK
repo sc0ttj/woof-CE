@@ -39,9 +39,13 @@ defaultPref("identity.fxaccounts.enabled", false);
 defaultPref("identity.fxaccounts.toolbar.enabled", false);
 defaultPref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", false);
 defaultPref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", false);
+defaultPref("browser.tabs.firefox-view", false);
 
 // disable autoplay
 defaultPref("media.autoplay.default", 5);
+
+// use an external PDF viewer
+defaultPref("pdfjs.disabled", true);
 
 // privacy
 defaultPref("privacy.trackingprotection.enabled", true);
@@ -60,26 +64,21 @@ pref("general.config.filename", "puppy.cfg");
 EOF
 
 (cd $FFDIR
-[ -f omni.ja ] && mkdir omnidir
-mv omni.ja omnidir/omni.zip
-cd omnidir
-unzip -qq omni.zip
-rm omni.zip
-zip -0 -q -y -R ../newomni '*'
+while read ZIP; do
+mkdir zipdir
+mv $ZIP zipdir/zip.zip
+cd zipdir
+unzip -qq zip.zip
+rm zip.zip
+zip -0 -q -y -R ../zipdir '*'
 cd ..
-mv newomni.zip omni.ja
-rm -r omnidir)
+mv zipdir.zip $ZIP
+rm -r zipdir
+done < <(find -name omni.ja -or -name '*.xpi'))
 
 NLSDIR=`pwd`_NLS/$FFDIR/browser/extensions
 mkdir -p $NLSDIR
 mv -vf $FFDIR/browser/extensions/langpack-* $NLSDIR/
-
-# force Firefox to combine the tab bar with the tile bar, to save vertical space
-# and fix inconsistency with some GTK 3 themes
-mkdir -p etc/profile.d
-cat << EOF > etc/profile.d/firefox
-export MOZ_GTK_TITLEBAR_DECORATION=client
-EOF
 
 (
 echo "echo '"'#!/bin/sh'"' > usr/local/bin/defaultbrowser"
@@ -97,6 +96,7 @@ echo "echo 'exec firefox \"\$@\"' >> usr/local/bin/defaultbrowser"
 echo "chmod 755 usr/local/bin/defaultbrowser"
 echo "echo 'exec firefox \"\$@\"' >> usr/local/bin/defaulthtmlviewer"
 echo "chmod 755 usr/local/bin/defaulthtmlviewer"
+echo "[ -e usr/bin/X -o -e usr/bin/jwm ] || echo MOZ_ENABLE_WAYLAND=1 >> etc/environment"
 echo 'echo "setting up Firefox"'
 ) > pinstall.sh
 

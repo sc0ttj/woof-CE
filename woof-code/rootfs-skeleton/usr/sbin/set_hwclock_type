@@ -10,7 +10,7 @@ CLI=yes
 MENUBOX='--menubox'
 
 if [ -z "$HWOPT" -o -z "$HWCLOCKTIME" ] ; then
-	pidof X >/dev/null 2>&1 || pidof Xorg >/dev/null 2>&1 || pidof Xwayland >/dev/null 2>&1 && CLI=""
+	pidof -s X Xorg `cat /etc/windowmanager 2>/dev/null` >/dev/null 2>&1 && CLI=""
 fi
 
 for i in $@ ; do
@@ -84,10 +84,10 @@ CMD="hwclock ${HWOPT} --${HWCLOCKTIME}"
 #echo $CMD
 if [ "${HWOPT}" = "--hctosys" ] ; then
 	#...--hctosys reads cmos clock to system, referencing /usr/share/zoneinfo/localtime
-	$CMD || $CMD --directisa #try --directisa if reading from /dev/rtc fails
+	busybox $CMD || $CMD || $CMD --directisa #try --directisa if reading from /dev/rtc fails
 else
 	# set hardware clock from system time/date
-	$CMD
+	busybox $CMD || $CMD
 fi
 
 exit $?

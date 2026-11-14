@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # sandbox3 or $PX $BUILD
 #
@@ -61,6 +61,12 @@ color_normal=cyan/black
 menu_color_highlight=yellow/red
 menu_color_normal=light-gray/black
 
+if [ -e /ucode.cpio ]; then
+  ucode_parm="/ucode.cpio"
+else
+  ucode_parm=
+fi
+
 EOF
 }
 
@@ -75,6 +81,27 @@ color_normal=cyan/black
 #menu_color_highlight=black/light-gray
 menu_color_highlight=yellow/red
 menu_color_normal=light-gray/black
+
+if [ -z "\$rootuuid" ]; then
+  if search --file --set=iso_part --no-floppy \$iso_path; then
+    probe --set=rootuuid --fs-uuid \$iso_part
+  fi
+fi
+if [ -z "\$rootuuid" ]; then
+  dev_parm=
+else
+  dev_parm="img_dev=\${rootuuid}"
+fi
+if [ -e /ucode.cpio ]; then
+  ucode_parm="/ucode.cpio"
+else
+  ucode_parm=
+fi
+if [ -e /local-initrd.gz ]; then
+  local_parm="/local-initrd.gz"
+else
+  local_parm=
+fi
 
 EOF
 }
@@ -104,21 +131,19 @@ build_grub2_cfg() {
 	outfile="$1" # /path/to/grub.cfg or /path/to/loopback.cfg
 	distrodesc="$2" # "Slacko Puppy $ver Fossa Puppy $ver etc 
 	bootopts="$3" # pfix=fsck pmedia=cd etc
-	micro="$4" # bool - add option to load ucode.cpio
 	loopback=''
-	echo $outfile | grep -q 'loopback' && loopback='find_iso=${iso_path}'
-	if [ "$micro" = 'true' ] ; then
-		INITRDG='if [ -e /ucode.cpio ]; then
-      initrd /ucode.cpio /initrd.gz
-    else
-      initrd /initrd.gz
-    fi'
+	echo $outfile | grep -q 'loopback' && loopback='${dev_parm} img_loop=${iso_path}'
+	if [ "$loopback" ]; then
+		INITRDMSG='echo "Loading ${ucode_parm} /initrd.gz ${local_parm}"'
+		INITRDG='initrd ${ucode_parm} /initrd.gz ${local_parm}'
 	else
-		INITRDG='initrd /initrd.gz'
+		INITRDMSG='echo "Loading ${ucode_parm} /initrd.gz"'
+		INITRDG='initrd ${ucode_parm} /initrd.gz'
 	fi
 	cat >> $outfile <<EOF # append
 menuentry "${distrodesc}" {
     linux /vmlinuz pmedia=cd $bootopts $loopback
+    $INITRDMSG
     $INITRDG
 }
 
@@ -296,6 +321,7 @@ mk_efi_img() {
 	TGT=$1
 	gfp=$2
 	gcer=$3
+	root=$4
 	if [ -n "$UEFI_32" ] ; then
 		xFEILD='*'
 	else
@@ -328,6 +354,7 @@ mk_efi_img() {
 		cp $gcer /tmp/efi_img/EFI/boot/ || return 5
 	fi
 	rm -f /tmp/efi_img/EFI/boot/grub.cfg
+	cp -r /tmp/efi_img/EFI $root/ || return 6 # required for UEFI support in UNetbootin
 	echo "unmounting /tmp/efi_img"
 	umount /tmp/efi_img || return 7
 	losetup -a | grep -o -q "${FREE_DEV##*/}" && losetup -d $FREE_DEV
@@ -342,13 +369,15 @@ mk_iso() {
 	tmp_isoroot=$1 	# input
 	OUTPUT=$2 		# output
 	BOOT_CAT="-c boot/boot.catalog"
+	MKISOFS="mkisofs"
+	command -v mkisofs > /dev/null || MKISOFS="xorriso -as mkisofs"
 	if [ "$UEFI_ISO" ] ; then
-		mkisofs -iso-level 4 -D -R -o $OUTPUT -b isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table ${BOOT_CAT} \
+		${MKISOFS} -iso-level 4 -D -R -o $OUTPUT -b isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table ${BOOT_CAT} \
 			-eltorito-alt-boot -eltorito-platform efi -b boot/efi.img -no-emul-boot "$tmp_isoroot" || exit 100
 		[ $? -ne 0 ] && exit 1
 		UEFI_OPT=-u
 	else
-		mkisofs -iso-level 4 -D -R -o $OUTPUT -b isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table ${BOOT_CAT} "$tmp_isoroot" || exit 101
+		${MKISOFS} -iso-level 4 -D -R -o $OUTPUT -b isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table ${BOOT_CAT} "$tmp_isoroot" || exit 101
 		[ $? -ne 0 ] && exit 1
 		UEFI_OPT=''
 	fi
@@ -373,37 +402,19 @@ OUT=${WOOF_OUTPUT}/${ISO_BASENAME}.iso
 ISOLINUX=`find $PX/usr -maxdepth 3 -type f -name 'isolinux.bin'`
 CHAIN32=`find $PX/usr -maxdepth 5 -type f -name 'chain.c32' | grep -v efi`
 #FIXUSB=`find $PX/usr -maxdepth 2 -type f -name 'fix-usb.sh'`
-if [ -e "${PX}/usr/local/frugalpup" ] ; then
-	UEFI_ISO=yes
-	FPGRUB2XZ=`find $PX/usr/local/frugalpup -maxdepth 1 -name 'grub2-efi.tar.xz'`
-	FPBOOT=/tmp/grub2/EFI/boot
-	CER=/tmp/grub2/puppy.cer
-	FONT=$PX/usr/share/boot-dialog/font.pf2
-elif [ -d "devx/usr/share/cd-boot-images-amd64" ]; then
-	(
-		cd "devx/usr/share/cd-boot-images-amd64/tree"
-		mkdir -p /tmp/grub2/EFI/boot
-		cp EFI/boot/*.efi /tmp/grub2/EFI/boot/
-		cat << EOF > /tmp/grub2/EFI/boot/grub.cfg
-# The real config file for grub is /grub.cfg
-configfile /grub.cfg
-EOF
-		install -D /tmp/grub2/EFI/boot/grub.cfg /tmp/grub2/boot/grub/grub.cfg
-		cd /tmp/grub2
-		tar -c * | xz -1 > /tmp/grub2-efi.tar.xz
-		cd ..
-		rm -rf grub2
-	)
-	UEFI_ISO=yes
-	FPGRUB2XZ=/tmp/grub2-efi.tar.xz
-	FPBOOT=/tmp/grub2/EFI/boot
-	CER=
-	FONT=devx/usr/share/cd-boot-images-amd64/tree/boot/grub/fonts/unicode.pf2
-elif [ -f "devx/usr/lib/shim/shimx64.efi.signed" -a -f "devx/usr/lib/shim/mmx64.efi.signed" -a -f "devx/usr/lib/grub/x86_64-efi-signed/gcdx64.efi.signed" -a -f "devx/usr/share/grub/unicode.pf2" ]; then
+if [ -f "devx/usr/lib/shim/shimx64.efi.signed" -o -f "devx/usr/lib/shim/shimx64.efi.signed.latest" ] && [ -f "devx/usr/lib/grub/x86_64-efi-signed/gcdx64.efi.signed" -a -f "devx/usr/share/grub/unicode.pf2" ] && [ -f "devx/usr/lib/shim/mmx64.efi.signed" -o -f "devx/usr/lib/shim/mmx64.efi" ] ; then
 	(
 		mkdir -p /tmp/grub2/EFI/boot
-		cp -f devx/usr/lib/shim/shimx64.efi.signed /tmp/grub2/EFI/boot/bootx64.efi
-		cp -f devx/usr/lib/shim/mmx64.efi.signed /tmp/grub2/EFI/boot/mmx64.efi
+		if [ -f devx/usr/lib/shim/shimx64.efi.signed.latest ]; then
+			cp -f devx/usr/lib/shim/shimx64.efi.signed.latest /tmp/grub2/EFI/boot/bootx64.efi
+		else
+			cp -f devx/usr/lib/shim/shimx64.efi.signed /tmp/grub2/EFI/boot/bootx64.efi
+		fi
+		if [ -f devx/usr/lib/shim/mmx64.efi.signed ]; then
+			cp -f devx/usr/lib/shim/mmx64.efi.signed /tmp/grub2/EFI/boot/mmx64.efi
+		else
+			cp -f devx/usr/lib/shim/mmx64.efi /tmp/grub2/EFI/boot/mmx64.efi
+		fi
 		cp -f devx/usr/lib/grub/x86_64-efi-signed/gcdx64.efi.signed /tmp/grub2/EFI/boot/grubx64.efi
 		cat << EOF > /tmp/grub2/EFI/boot/grub.cfg
 # The real config file for grub is /grub.cfg
@@ -420,6 +431,22 @@ EOF
 	FPBOOT=/tmp/grub2/EFI/boot
 	CER=
 	FONT=devx/usr/share/grub/unicode.pf2
+elif [ -e "${PX}/usr/local/frugalpup" ] ; then
+	UEFI_ISO=
+	FPGRUB2XZ=`find $PX/usr/local/frugalpup -maxdepth 1 -name 'grub2-efi.tar.xz'`
+	FPBOOT=/tmp/grub2/EFI/boot
+	CER=/tmp/grub2/puppy.cer
+	if [ "$FPGRUB2XZ" ] ; then
+		UEFI_ISO=yes
+	else
+		FPGRUB2XZ=`find $PX/usr/local/frugalpup -maxdepth 1 -name 'grub2-efi-bin.tar.xz'`
+		if [ "$FPGRUB2XZ" ] ; then
+			UEFI_ISO=yes
+			CER=
+			FPBOOT=/tmp/grub2
+		fi
+	fi
+	FONT=$PX/usr/share/boot-dialog/font.pf2
 else
 	UEFI_ISO=
 	rm -f ${BUILD}/boot/efi.img
@@ -446,18 +473,18 @@ for e in "$NAME" \
 		"$NAME - RAM only - no pupsave" \
 		"$NAME - Ram Disk Shell" ; do
 		case "$e" in
-			"$NAME")opt='pfix=fsck' ;;
-			*"- Copy"*)opt='pfix=fsck,copy' ;;
-			*"- Don't copy"*)opt='pfix=fsck,nocopy' ;;
-			*"- Force xorgwizard"*)opt='pfix=xorgwizard,fsck'; gandl=no ;;
-			*"- No X"*)opt='pfix=nox,fsck' ;;
-			*"- No Kernel Mode"*)opt='nomodeset pfix=fsck'; gandl=no ;;
-			*"- Safe mode"*)opt='pfix=ram,nox,fsck' ;;
-			*"- RAM only"*)opt='pfix=ram,fsck' ;;
-			*"- Ram Disk"*)opt='pfix=rdsh' ;;
+			"$NAME")opt='pfix=fsck,fsckp' ;;
+			*"- Copy"*)opt='pfix=fsck,fsckp,copy' ;;
+			*"- Don't copy"*)opt='pfix=fsck,fsckp,nocopy' ;;
+			*"- Force xorgwizard"*)opt='pfix=fsck,fsckp,xorgwizard'; gandl=no ;;
+			*"- No X"*)opt='pfix=fsck,fsckp,nox' ;;
+			*"- No Kernel Mode"*)opt='nomodeset pfix=fsck,fsckp'; gandl=no ;;
+			*"- Safe mode"*)opt='pfix=fsck,fsckp,ram,nox' ;;
+			*"- RAM only"*)opt='pfix=fsck,fsckp,ram' ;;
+			*"- Ram Disk"*)opt='pfix=fsck,fsckp,rdsh' ;;
 		esac
-		[ "$gandl" = 'no' ] || build_grub2_cfg $BUILD/grub.cfg "$e" "$opt" true
-		[ "$gandl" = 'no' ] || build_grub2_cfg $BUILD/boot/grub/loopback.cfg "$e" "$opt" true
+		[ "$gandl" = 'no' ] || build_grub2_cfg $BUILD/grub.cfg "$e" "$opt"
+		[ "$gandl" = 'no' ] || build_grub2_cfg $BUILD/boot/grub/loopback.cfg "$e" "$opt"
 		build_menu_lst $BUILD/boot/grub/menu.lst "$e" "$opt" true
 		gandl=''
 done
@@ -500,6 +527,15 @@ case ${DISTRO_FILE_PREFIX} in
 	[Tt]ahr*)   pic='tahr.png'   ;;
 	[Ss]lacko*) pic='slacko.png' ;;
 	[Xx]enial*) pic='xenial.png' ;;
+	*)
+		if [ -f ${PX}/usr/share/boot-dialog/${DISTRO_FILE_PREFIX}.svg ] ; then
+			sed -i "s/Puppy Linux/${DISTRO_NAME}/" ${PX}/usr/share/boot-dialog/${DISTRO_FILE_PREFIX}.svg
+			if chroot ${PX} rsvg-convert -w 800 -h 600 -o /usr/share/boot-dialog/${DISTRO_FILE_PREFIX}.png /usr/share/boot-dialog/${DISTRO_FILE_PREFIX}.svg ; then
+				pic="${DISTRO_FILE_PREFIX}.png"
+				chroot ${PX} sh -c "pngtopnm /usr/share/boot-dialog/${DISTRO_FILE_PREFIX}.png | pnmtojpeg > /usr/share/boot-dialog/splash.jpg.new" && mv -vf ${PX}/usr/share/boot-dialog/splash.jpg{.new,} || rm -vf ${PX}/usr/share/boot-dialog/splash.jpg.new
+			fi
+		fi
+		;;
 esac
 echo $pic
 if [ -f ${PX}/usr/share/boot-dialog/${pic} ] ; then
@@ -509,7 +545,7 @@ cp -fv ${PX}/usr/share/boot-dialog/splash.jpg ${BUILD}/boot/
 
 # build efi image
 if [ -n "$UEFI_ISO" ] ; then
-	mk_efi_img $BUILD/boot $FPBOOT "$CER" || exit $?
+	mk_efi_img $BUILD/boot $FPBOOT "$CER" $BUILD || exit $?
 	rm -rf /tmp/grub2 # cleanup
 fi
 

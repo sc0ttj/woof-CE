@@ -13,7 +13,7 @@ if [ -f ../_00build.conf ] ; then
 fi
 
 CWD=`pwd`
-wget --help | grep -q '\-\-show\-progress' && WGET_SHOW_PROGRESS='-q --show-progress'
+wget --help | grep -q '\--show-progress' && WGET_SHOW_PROGRESS='-q --show-progress'
 WGET_OPT='--no-check-certificate '${WGET_SHOW_PROGRESS}
 
 MWD=$(pwd)
@@ -87,7 +87,7 @@ if [ -n "$DOTconfig_file" -a -n "$LatestK" ] ; then
 	[ -e "$DOTconfig_file" ] || exit_error "$DOTconfig_file doesn't exist"
 	IFS='-' read a b c <<< $DOTconfig_file
 	DOTconfig_sver=${b%\.*}
-	DOTconfig_new_ver_pre=`grep "^$DOTconfig_sver" /tmp/kernels.txt`
+	DOTconfig_new_ver_pre=`grep "^$DOTconfig_sver\." /tmp/kernels.txt`
 	if [ -z "$DOTconfig_new_ver_pre" ] ; then
 		log_msg "No latest stable or longterm kernel for Linux $b, Continuing with $DOTconfig_file"
 	elif [ "$b" == "${DOTconfig_new_ver_pre% *}" ] ; then
@@ -96,6 +96,7 @@ if [ -n "$DOTconfig_file" -a -n "$LatestK" ] ; then
 		DOTconfig_new_ver=${DOTconfig_new_ver_pre% *}
 		DOTconfig_type=${DOTconfig_new_ver_pre#* }
 		log_msg "Latest Linux $DOTconfig_new_ver $DOTconfig_type"
+		b=`echo "$b" | sed 's/\\./\\\\./g'`
 		NEW_DOTconfig_file=`echo $DOTconfig_file | sed "s%$b%$DOTconfig_new_ver%"`
 		log_msg "New DOTconfig_file is $NEW_DOTconfig_file"
 		mv $DOTconfig_file $NEW_DOTconfig_file
@@ -107,8 +108,7 @@ fi
 
 ## determine number of jobs for make
 if [ ! "$JOBS" ] ; then
-	JOBS=$(grep "^processor" /proc/cpuinfo | wc -l)
-	[ $JOBS -ge 1 ] && JOBS="-j${JOBS}" || JOBS=""
+	JOBS="-j$(nproc)"
 fi
 [ "$JOBS" ] && log_msg "Jobs for make: ${JOBS#-j}" && echo
 
@@ -222,7 +222,7 @@ fi
 log_msg "kernel_version=${kernel_version}"
 log_msg "kernel_version_info=${kernel_version_info}"
 case "$kernel_version" in
-	3.*|4.*|5.*|6.*) ok=1 ;; #----
+	3.*|4.*|5.*|6.*|7.*) ok=1 ;; #----
 	*) exit_error "ERROR: Unsupported kernel version" ;;
 esac
 
@@ -236,13 +236,15 @@ export kernel_version
 # $package_name_suffix $custom_suffix $kernel_ver
 aufs_git_3="https://github.com/puppylinux-woof-CE/aufs3-standalone.git"
 aufs_git_4="https://github.com/sfjro/aufs4-standalone.git"
-aufs_git_5="https://github.com/sfjro/aufs5-standalone.git"
-aufs_git_6="https://github.com/sfjro/aufs6-standalone.git"
+aufs_git_5="https://github.com/sfjro/aufs-standalone.git"
+aufs_git_6="https://github.com/sfjro/aufs-standalone.git"
+aufs_git_7="https://github.com/sfjro/aufs-standalone.git"
 [ ! "$kernel_mirrors" ] && kernel_mirrors="https://www.kernel.org/pub/linux/kernel"
 ksubdir_3=v3.x #http://www.kernel.org/pub/linux/kernel/v3.x
 ksubdir_4=v4.x
 ksubdir_5=v5.x
 ksubdir_6=v6.x
+ksubdir_7=v7.x
 #-- random kernel mirror first
 rn=$(( ( RANDOM % $(echo "$kernel_mirrors" | wc -l) )  + 1 ))
 x=0
@@ -342,6 +344,8 @@ case $kernel_series in
 	3) ksubdir=${ksubdir_3} ; aufs_git=${aufs_git_3} ; aufs_git_dir=aufs3_sources_git ;;
 	4) ksubdir=${ksubdir_4} ; aufs_git=${aufs_git_4} ; aufs_git_dir=aufs4_sources_git ;;
 	5) ksubdir=${ksubdir_5} ; aufs_git=${aufs_git_5} ; aufs_git_dir=aufs5_sources_git ;;
+	6) ksubdir=${ksubdir_6} ; aufs_git=${aufs_git_6} ; aufs_git_dir=aufs6_sources_git ;;
+	7) ksubdir=${ksubdir_7} ; aufs_git=${aufs_git_7} ; aufs_git_dir=aufs7_sources_git ;;
 esac
 
 ## create directories for the results
@@ -662,6 +666,7 @@ log_msg "Cleaning the kernel sources"
 make clean
 make mrproper
 find . \( -name '*.orig' -o -name '*.rej' -o -name '*~' \) -delete
+rm -f tools/bpf/bpftool/vmlinux
 
 if [ -f ../DOTconfig ] ; then
 	cp ../DOTconfig .config
@@ -696,6 +701,9 @@ fi
 
 #####################
 # pause to configure
+# add-500hz.txt adds 500hz to the standard set
+sed -i $'/config HZ_1000/{e cat ../add-500hz.txt\n}' ../linux/kernel/Kconfig.hz
+sed -i '/default 300 if HZ_300/a \\tdefault 500 if HZ_500' ../linux/kernel/Kconfig.hz
 function do_kernel_config() {
 	log_msg "$MAKE $1"
 	$MAKE $1 ##
@@ -990,7 +998,7 @@ if [ "$CREATE_SOURCES_SFS" != "no" ]; then
 
 	if [ "$CREATE_KBUILD_SFS" = "yes" ]; then
 		mkdir -p ${KBUILD_DIR}/usr/src/${KBUILD_DIR}
-		./kbuild.sh ${KERNEL_SOURCES_DIR}/usr/src/linux ${KBUILD_DIR}/usr/src/${KBUILD_DIR} || exit 1
+		./kbuild.sh ${KERNEL_SOURCES_DIR}/usr/src/linux ${KBUILD_DIR}/usr/src/${KBUILD_DIR} ${karch} || exit 1
 		if [ "$remove_sublevel" = "yes" ]; then
 			mkdir -p ${KBUILD_DIR}/lib/modules/${kernel_major_version}.0
 			ln -s ../../../usr/src/${KBUILD_DIR} ${KBUILD_DIR}/lib/modules/${kernel_major_version}.0/build
@@ -1000,9 +1008,12 @@ if [ "$CREATE_SOURCES_SFS" != "no" ]; then
 			ln -s ../../../usr/src/${KBUILD_DIR} ${KBUILD_DIR}/lib/modules/${kernel_version}${custom_suffix}/build
 			ln -s ../../../usr/src/${KBUILD_DIR} ${KBUILD_DIR}/lib/modules/${kernel_version}${custom_suffix}/source
 		fi
+		[ -n "$GITHUB_ACTIONS" ] && rm -rf ${KERNEL_SOURCES_DIR}
 		mksquashfs ${KBUILD_DIR} output/${KBUILD_DIR}.sfs $COMP
 		md5sum output/${KBUILD_DIR}.sfs > output/${KBUILD_DIR}.sfs.md5.txt
 		sha256sum output/${KBUILD_DIR}.sfs > output/${KBUILD_DIR}.sfs.sha256.txt
+	elif [ -n "$GITHUB_ACTIONS" ]; then
+		rm -rf ${KERNEL_SOURCES_DIR}
 	fi
 fi
 
@@ -1040,7 +1051,7 @@ fi
 
 if [ "$STRIP_KMODULES" = "yes" ] ; then
  [ -z "$STRIP" ] && STRIP=strip
- if [ "$(which $STRIP)" != "" -a "$($STRIP --help | grep "\-\-strip\-unneeded")" != "" ]; then
+ if [ "$(which $STRIP)" != "" -a "$($STRIP --help | grep "\--strip-unneeded")" != "" ]; then
 	for mods1 in $(find "$(pwd)/output/${linux_kernel_dir}" -type f -name "*.ko")
 	do
 		file "$mods1" | grep -q "unstripped" || $STRIP --strip-unneeded "$mods1"
@@ -1056,6 +1067,7 @@ fi
 
 mksquashfs output/${linux_kernel_dir} output/${KERNEL_MODULES_SFS_NAME} $COMP
 [ $? = 0 ] || exit 1
+[ -n "$GITHUB_ACTIONS" ] && rm -rf output/${linux_kernel_dir}
 
 cd output/
 if [ "$kit_kernel" = "yes" ]; then
@@ -1080,10 +1092,12 @@ else
 		tar -cjvf huge-${OUTPUT_VERSION}.tar.bz2 \
 		vmlinuz-${OUTPUT_VERSION} ${FDRV} \
 		${KERNEL_MODULES_SFS_NAME} || exit 1
+		[ -n "$GITHUB_ACTIONS" ] && rm -f vmlinuz-${OUTPUT_VERSION} ${FDRV} ${KERNEL_MODULES_SFS_NAME}
 	else
 		tar -cjvf huge-${OUTPUT_VERSION}.tar.bz2 \
 		vmlinuz-${OUTPUT_VERSION} \
 		${KERNEL_MODULES_SFS_NAME} || exit 1	
+		[ -n "$GITHUB_ACTIONS" ] && rm -f vmlinuz-${OUTPUT_VERSION} ${KERNEL_MODULES_SFS_NAME}
 	fi
 	echo "huge-${OUTPUT_VERSION}.tar.bz2 is in output"
 	md5sum huge-${OUTPUT_VERSION}.tar.bz2 > huge-${OUTPUT_VERSION}.tar.bz2.md5.txt

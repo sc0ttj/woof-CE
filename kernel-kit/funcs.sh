@@ -2,7 +2,7 @@
 
 function git_aufs_util_branch() {
 	# aufs-util branch - must keep this updated - git://git.code.sf.net/p/aufs/aufs-util.git
-	for i in 5.8 5.0 4.19 4.14 4.9 4.4 4.1 4.0 3.18 3.14 3.9 3.2
+	for i in 7.0 6.0 5.8 5.0 4.19 4.14 4.9 4.4 4.1 4.0 3.18 3.14 3.9 3.2
 	do
 		if vercmp ${kernel_version} ge ${i} ; then
 			aufs_util_branch=${i}
@@ -80,6 +80,7 @@ function git_aufs_branch() {
 	5.10)  aufsv=5.10
 		vercmp ${kernel_version} ge 5.10.82 && aufsv='5.10.82'
 		vercmp ${kernel_version} ge 5.10.117 && aufsv='5.10.117'
+		vercmp ${kernel_version} ge 5.10.140 && aufsv='5.10.140'
 		;;
 	5.15)  aufsv=5.15
 		vercmp ${kernel_version} ge 5.15.5 && aufsv='5.15.5'
@@ -88,6 +89,28 @@ function git_aufs_branch() {
 		;;
 	5.17)  aufsv=5.17
 		vercmp ${kernel_version} ge 5.17.3 && aufsv='5.17.3'
+		;;
+	#### k6.x #####
+	6.6)  aufsv=6.6
+		vercmp ${kernel_version} ge 6.6.4 && aufsv='6.6.4'
+		vercmp ${kernel_version} ge 6.6.44 && aufsv='6.6.44'
+		vercmp ${kernel_version} ge 6.6.54 && aufsv='6.6.54'
+		vercmp ${kernel_version} ge 6.6.63 && aufsv='6.6.63'
+		vercmp ${kernel_version} ge 6.6.84 && aufsv='6.6.84'
+		;;
+	6.10)  aufsv=6.10
+		vercmp ${kernel_version} ge 6.10.13 && aufsv='6.10.13'
+		;;
+	6.11)  aufsv=6.11
+		vercmp ${kernel_version} ge 6.11.2 && aufsv='6.11.2'
+		;;
+	6.12)  aufsv=6.12
+		vercmp ${kernel_version} ge 6.12.25 && aufsv='6.12.25'
+		vercmp ${kernel_version} ge 6.12.29 && aufsv='6.12.29'
+		;;
+	6.14)  aufsv=6.14
+		vercmp ${kernel_version} ge 6.14.4 && aufsv='6.14.4'
+		vercmp ${kernel_version} ge 6.14.7 && aufsv='6.14.7'
 		;;
 	*)     aufsv=${kernel_major_version} ;;
 esac

@@ -6,7 +6,7 @@ export TEXTDOMAIN=ptheme
 export OUTPUT_CHARSET=UTF-8
 
 #check is X is runnning
-[ "`grep -F 'xwin' <<< $(ps -eo pid,command)`" ] && export X_IS_RUNNING=true || export X_IS_RUNNING=false
+pidof -s X Xorg `cat /etc/windowmanager` > /dev/null && export X_IS_RUNNING=true || export X_IS_RUNNING=false
 
 export WORKDIR=$HOME/.ptheme/tmp/ptheme
 [ ! -d $WORKDIR ] && mkdir -p $WORKDIR
@@ -26,12 +26,12 @@ set_gtk4_theme() {
 				! grep -q "$1" $REAL_XDG_CONFIG_HOME/gtk-4.0/settings.ini &&  \
 					sed -i "s/^gtk-icon-theme-name.*/gtk-icon-theme-name = $1/" $REAL_XDG_CONFIG_HOME/gtk-4.0/settings.ini
 			else
-				echo "gtk-icon-theme-name = $ICON_THEME" >> $REAL_XDG_CONFIG_HOME/gtk-4.0/settings.ini
+				echo "gtk-icon-theme-name = $1" >> $REAL_XDG_CONFIG_HOME/gtk-4.0/settings.ini
 			fi
 		else
 			cat << _EOF > $REAL_XDG_CONFIG_HOME/gtk-4.0/settings.ini
 [Settings]
-gtk-icon-theme-name = $ICON_THEME
+gtk-icon-theme-name = $1
 _EOF
 		fi
 	else
@@ -65,12 +65,12 @@ set_gtk3_theme() {
 				! grep -q "$1" $REAL_XDG_CONFIG_HOME/gtk-3.0/settings.ini &&  \
 					sed -i "s/^gtk-icon-theme-name.*/gtk-icon-theme-name = $1/" $REAL_XDG_CONFIG_HOME/gtk-3.0/settings.ini
 			else
-				echo "gtk-icon-theme-name = $ICON_THEME" >> $REAL_XDG_CONFIG_HOME/gtk-3.0/settings.ini
+				echo "gtk-icon-theme-name = $1" >> $REAL_XDG_CONFIG_HOME/gtk-3.0/settings.ini
 			fi
 		else
 			cat << _EOF > $REAL_XDG_CONFIG_HOME/gtk-3.0/settings.ini
 [Settings]
-gtk-icon-theme-name = $ICON_THEME
+gtk-icon-theme-name = $1
 _EOF
 		fi
 	else
@@ -106,7 +106,7 @@ EOF
 
 set_theme_gtk (){
 	[ ! "$THEME" ] && export THEME="$ACTIVE_THEME"
-	if [ $X_IS_RUNNING = true -o "$WAYLAND_DISPLAY" ]; then
+	if [ $X_IS_RUNNING = true ]; then
 		if [ "$(which gtk-theme-switch2)" ] ; then
 			gtk-theme-switch2 -f "$FONT" "/usr/share/themes/$THEME"
 			set_gtk3_theme "$THEME"
@@ -151,8 +151,8 @@ _EOF
 	elif [ "$ACTIVE_ICON_THEME" ]; then
 		sed -i '/gtk-icon-theme-name/d' $HOME/.gtkrc-2.0
 		echo "gtk-icon-theme-name = \"$ACTIVE_ICON_THEME\"" >> $HOME/.gtkrc-2.0
-		set_gtk3_theme "ACTIVE_$ICON_THEME"
-		set_gtk4_theme "ACTIVE_$ICON_THEME"
+		set_gtk3_theme "$ACTIVE_ICON_THEME"
+		set_gtk4_theme "$ACTIVE_ICON_THEME"
 		# rox "Options"
 		sed -i "s/  <Option name=\"icon_theme\">.*$/  <Option name=\"icon_theme\">$ICON_THEME<\/Option>/" $HOME/.config/rox.sourceforge.net/ROX-Filer/Options
 	fi
@@ -163,6 +163,11 @@ _EOF
 		echo "gtk-theme-name=\"${THEME}\"" >> /root/.gtkrc-2.0
 	fi
 	install -D -m 644 $HOME/.gtkrc-2.0 /etc/gtk-2.0/gtkrc
+
+	if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+		. /etc/rc.d/wl_func
+		apply_gtk_settings
+	fi
 }
 
 set_font (){
@@ -173,12 +178,17 @@ set_font (){
 
 export -f set_theme_gtk set_font set_gtk3_theme set_gtk4_theme
 
+EXIT_WITHOUT_GUI=0
 #parameters
 while [ $# != 0 ]; do
 	I=1
 	while [ $I -le `echo $# | wc -c` ]; do 
 		case $1 in
 			-t) export THEME="$2"
+				[ ! "$THEME" ] && export THEME="$ACTIVE_THEME"
+				shift
+				EXIT_WITHOUT_GUI=1;;
+			-T) export THEME="$2"
 				[ ! "$THEME" ] && export THEME="$ACTIVE_THEME"
 				shift;;
 			-f) export FONT="$2"; shift;;
@@ -190,7 +200,8 @@ echo 'Usage: ptheme_gtk [OPTIONS]
 Options
   -f FONT       Set font for theme
   -i ICON_THEME Set icon-theme for theme
-  -t THEME      Set theme without open gui 
+  -T THEME      Set theme and open gui 
+  -t THEME      Set theme without opening gui 
   -h            Show this help message'; exit;;
 		esac
 		shift
@@ -200,6 +211,7 @@ done
 
 if [ "$THEME" ]; then
 	set_theme_gtk
+	unset THEME # if inherited by ROX-Filer and ptheme_gtk is invoked through the pinboard, we always enter this if
 	if pidof ROX-Filer >/dev/null 2>&1; then
 		HOMEDIR=`echo $HOME`
 		ROX_OPEN="$(xwininfo -root -tree | grep -i 'ROX' | awk '{print $2}' | grep -Evi 'ROX|has' | sed -e 's/[\(";:\)]//g' -e "s%\~%$HOMEDIR%g")" # store open rox windows 
@@ -210,7 +222,10 @@ if [ "$THEME" ]; then
 			roxfiler $d
 		done # re-open killed windows
 	fi
-	exit
+
+	if [ $EXIT_WITHOUT_GUI -eq 1 ]; then
+		exit
+	fi
 fi
 
 #build list
@@ -222,6 +237,12 @@ while read I; do
 done <<<  "$(find /usr/share/icons -maxdepth 3 -type d -name "32*" | cut -d '/' -f 5 | sort -u)"
 [ ! "$ICON_THEME" ] && ICON_THEME="$ACTIVE_ICON_THEME"
 echo "$ICON_THEME" > $WORKDIR/ptheme-gtkicon
+PTHEME_BUTTON=""
+command -v ptheme > /dev/null && PTHEME_BUTTON='<button space-expand="false" space-fill="false">
+  '"`/usr/lib/gtkdialog/xml_button-icon puppy_theme.svg`"'
+  <label>" '$(gettext 'Global theming')' "</label>
+  <action>/usr/sbin/ptheme</action>
+</button>'
 
 export pThemeGTK='
 <window title="GTK '$(gettext 'theme switcher')'" icon-name="gtk-preferences">
@@ -309,11 +330,7 @@ export pThemeGTK='
       <label>'$(gettext 'More themes')'</label>
       <action>defaulthtmlviewer https://oldforum.puppylinux.com/viewtopic.php?t=30075 &</action>
     </button>
-    <button space-expand="false" space-fill="false">
-      '"`/usr/lib/gtkdialog/xml_button-icon puppy_theme.svg`"'
-      <label>" '$(gettext 'Global theming')' "</label>
-      <action>/usr/sbin/ptheme</action>
-    </button>
+'$PTHEME_BUTTON'
     <text space-expand="true" space-fill="true"><label>""</label></text>
     <button>
       '"`/usr/lib/gtkdialog/xml_button-icon cancel`"'
@@ -322,8 +339,8 @@ export pThemeGTK='
     </button>
     <button>
       '"`/usr/lib/gtkdialog/xml_button-icon ok`"'
-      <label>'$(gettext 'Ok')'</label>
-      <action>ptheme_gtk -t '$ACTIVE_THEME' &</action>
+      <label>'$(gettext 'Apply')'</label>
+      <action>ptheme_gtk -T '$THEME' &</action>
       <action>EXIT:exit</action>
     </button>
     '"`/usr/lib/gtkdialog/xml_scalegrip`"'
